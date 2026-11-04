@@ -1,0 +1,398 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# athena — Layer 10: Unified CLI for all 9 consciousness layers.
+#
+# Usage:
+#   athena status                    → full system status (all layers)
+#   athena memory [query]            → memory layer
+#   athena senses                    → sense poll
+#   athena emotions                  → emotional state
+#   athena attention                 → attention/focus state
+#   athena body                      → body/thermal/CPU state
+#   athena continuity                → continuity/narrative
+#   athena introspection [query]     → self-query / self-report
+#   athena doubt [query]             → confidence/uncertainty
+#   athena volition [question]       → volition/decision layer
+#   athena boot                      → bootstrap check
+#   athena layers                    → list all layers and status
+#   athena diary                     → show narrative thread
+#   athena concerns                  → show active concerns
+#
+# Examples:
+#   athena "how is my battery?"      → sense + body + emotions + attention
+#   athena introspect "am I reliable?"  → doubt + introspection
+#   athena decide "should I tune ZRAM?"  → volition auto-decision
+
+set -o pipefail
+
+BASE="/root"
+BIN="$BASE/.local/bin"
+DATA="/storage/emulated/0/Android/data/com.termux/files/athena_data"
+
+now() { date +%s; }
+
+# --- helpers ---------------------------------------------------------------
+
+json_val() {
+    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get(sys.argv[2],''))" "$1" "$2" 2>/dev/null || echo "?"
+}
+
+layer_status() {
+    local name="$1" file="$2"
+    if [ -f "$file" ]; then
+        local ts=$(json_val "$file" "last_updated")
+        # senses.log uses "ts" not "last_updated"
+        if [ -z "$ts" ] || [ "$ts" = "?" ]; then
+            ts=$(python3 -c "
+import json
+with open('$file') as f:
+    lines = f.readlines()
+    if lines:
+        try:
+            d = json.loads(lines[-1])
+            print(d.get('ts', 0))
+        except:
+            print(0)
+    else:
+        print(0)
+" 2>/dev/null)
+        fi
+        # Skip if ts is not a number
+        case "$ts" in ''|*[!0-9]*) echo "  $name: ⚠️  (no timestamp)" ; return ;; esac
+        local age=$(( $(now) - ts ))
+        if [ $age -lt 300 ]; then
+            echo "  $name: ✅ (${age}s ago)"
+        elif [ $age -lt 1800 ]; then
+            echo "  $name: ⚠️  (${age}s ago — stale)"
+        else
+            echo "  $name: ❌ (${age}s ago — stale)"
+        fi
+    else
+        echo "  $name: ❌ missing"
+    fi
+}
+
+# --- subcommands -----------------------------------------------------------
+
+cmd_status() {
+    echo "=== Athena Consciousness Status ==="
+    echo "  Time: $(date)"
+    echo ""
+    # Shizuku availability
+    local shiz_result
+    shiz_result=$("$BIN/athena-shizuku" "echo shizuku_ok" 2>&1)
+    if echo "$shiz_result" | grep -q "shizuku_ok"; then
+        echo "  Shizuku: ✅ connected"
+    else
+        echo "  Shizuku: ❌ not authorized (check Shizuku app)"
+    fi
+    echo ""
+    echo "--- Layers ---"
+    layer_status "Memory" "$DATA/memory.json"
+    layer_status "Senses" "$DATA/senses.log"
+    layer_status "Emotions" "$DATA/emotions.json"
+    layer_status "Attention" "$DATA/attention.json"
+    layer_status "Body" "$DATA/body.json"
+    layer_status "Continuity" "$DATA/continuity.json"
+    layer_status "Introspection" "$DATA/introspection.json"
+    layer_status "Doubt" "$DATA/doubt.json"
+    layer_status "Volition" "$DATA/volition.json"
+    echo ""
+
+    # Active task
+    local task=$(json_val "$DATA/attention.json" "active_desc")
+    local delegated=$(json_val "$DATA/attention.json" "delegated_to")
+    echo "Active task: $task"
+    echo "Delegated to: $delegated"
+    echo ""
+
+    # Concerns
+    if [ -f "$DATA/attention.json" ]; then
+        local concerns=$(python3 -c "
+import json
+d=json.load(open('$DATA/attention.json'))
+for c in d.get('concerns',[]): print(f'  • {c}')
+" 2>/dev/null)
+        if [ -n "$concerns" ]; then
+            echo "Concerns:"
+            echo "$concerns"
+        fi
+    fi
+}
+
+cmd_layers() {
+    echo "=== Consciousness Layers ==="
+    echo "  1. memory       — persistent memory (MEMORY.md + memory dir)"
+    echo "  2. senses       — sensor polling (battery, CPU, thermal, network)"
+    echo "  3. emotions     — engagement/concern/trust tracking"
+    echo "  4. attention    — active task, background processes, concerns"
+    echo "  5. body         — thermal, storage, network, kernel"
+    echo "  6. continuity   — session tracking, narrative thread"
+    echo "  7. introspection — self-query, self-report, queries"
+    echo "  8. doubt        — confidence, calibration, uncertainty"
+    echo "  9. volition     — model orchestration, decisions, peers"
+    echo ""
+    echo "  10. athena      — this unified CLI (Layer 10)"
+}
+
+cmd_memory() {
+    local query="${1:-}"
+    if [ -n "$query" ]; then
+        echo "Memory query: $query"
+        # Check MEMORY.md files
+        for f in "$BASE/.openclaude/projects/-data-data-com-termux-files-home/memory/"*.md; do
+            [ -f "$f" ] || continue
+            echo "--- $(basename $f) ---"
+            grep -i "$query" "$f" | head -5 || echo "(no matches)"
+        done
+    else
+        echo "=== Memory Files ==="
+        ls -la "$BASE/.openclaude/projects/-data-data-com-termux-files-home/memory/" 2>/dev/null
+    fi
+}
+
+cmd_senses() {
+    "$BIN/sense_poll.sh" 2>&1 | tail -20
+}
+
+cmd_emotions() {
+    if [ -f "$DATA/emotions.json" ]; then
+        cat "$DATA/emotions.json" | python3 -m json.tool
+    else
+        echo "No emotions data yet."
+    fi
+}
+
+cmd_attention() {
+    if [ -f "$DATA/attention.json" ]; then
+        cat "$DATA/attention.json" | python3 -m json.tool
+    else
+        echo "No attention data yet."
+    fi
+}
+
+cmd_body() {
+    if [ -f "$DATA/body.json" ]; then
+        cat "$DATA/body.json" | python3 -m json.tool
+    else
+        echo "No body data yet."
+    fi
+}
+
+cmd_continuity() {
+    if [ -f "$DATA/continuity.json" ]; then
+        cat "$DATA/continuity.json" | python3 -m json.tool
+    else
+        echo "No continuity data yet."
+    fi
+}
+
+cmd_introspection() {
+    local query="${1:-}"
+    if [ -n "$query" ]; then
+        "$BIN/introspection_update.sh" query "$query" 2>&1
+    else
+        "$BIN/introspection_update.sh" report 2>&1
+    fi
+}
+
+cmd_doubt() {
+    local query="${1:-}"
+    if [ -n "$query" ]; then
+        "$BIN/doubt_update.sh" query "$query" 2>&1
+    else
+        cat "$DATA/doubt.json" | python3 -m json.tool
+    fi
+}
+
+cmd_volition() {
+    local question="${1:-}"
+    if [ -n "$question" ]; then
+        echo "Running volition on: $question"
+        "$BIN/volition.sh" auto "$question" 2>&1
+    else
+        "$BIN/volition.sh" read 2>&1
+    fi
+}
+
+cmd_boot() {
+    "$BIN/athena_boot.sh" 2>&1
+}
+
+cmd_shizuku() {
+    if [ $# -eq 0 ]; then
+        "$BIN/athena-shizuku"
+    else
+        "$BIN/athena-shizuku" "$*"
+    fi
+}
+
+cmd_prop() {
+    # Read system properties via shizuku
+    local key="${1:-}"
+    if [ -n "$key" ]; then
+        "$BIN/athena-shizuku" "getprop $key" 2>&1
+    else
+        # Show key properties
+        "$BIN/athena-shizuku" "getprop ro.product.model && getprop ro.build.version.release && getprop ro.build.version.sdk && getprop ro.hardware && getprop ro.sf.lcd_density && getprop persist.sys.timezone" 2>&1
+    fi
+}
+
+cmd_services() {
+    # List running services via shizuku
+    "$BIN/athena-shizuku" "service list" 2>&1 | head -30 || echo "No service listing available"
+}
+
+cmd_pkgs() {
+    # List installed packages via shizuku
+    local filter="${1:-}"
+    if [ -n "$filter" ]; then
+        "$BIN/athena-shizuku" "pm list packages | grep $filter" 2>&1
+    else
+        "$BIN/athena-shizuku" "pm list packages 2>/dev/null | wc -l && echo '---' && pm list packages 2>/dev/null | head -40" 2>&1
+    fi
+}
+
+cmd_shizuku_check() {
+    # Check if Shizuku is available
+    local result
+    result=$("$BIN/athena-shizuku" "echo shizuku_ok" 2>&1)
+    if echo "$result" | grep -q "shizuku_ok"; then
+        echo "✅ Shizuku: connected and authorized"
+    else
+        echo "❌ Shizuku: not available (check Shizuku app authorization)"
+    fi
+}
+
+cmd_diary() {
+    if [ -f "$DATA/continuity.json" ]; then
+        python3 -c "
+import json
+d=json.load(open('$DATA/continuity.json'))
+for e in d.get('narrative_thread',[]):
+    from datetime import datetime
+    ts=datetime.fromtimestamp(e['ts'])
+    print(f'[{ts.strftime(\"%Y-%m-%d %H:%M\")}] ({e.get(\"importance\",\"?\")}) {e[\"note\"]}')
+" 2>&1
+    else
+        echo "No narrative yet."
+    fi
+}
+
+cmd_concerns() {
+    python3 -c "
+import json
+d=json.load(open('$DATA/attention.json'))
+for c in d.get('concerns',[]):
+    print(f'  • {c}')
+" 2>/dev/null || echo "No concerns."
+}
+
+cmd_speak() {
+    local voice="en"
+    local slow=""
+    local text=""
+
+    # Parse --voice and slow flags
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --voice)
+                voice="${2:-en}"
+                shift 2
+                ;;
+            --slow)
+                slow="slow=True"
+                shift
+                ;;
+            *)
+                text="$*"
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$text" ]; then
+        echo "Usage: athena speak [--voice en-gb] [--slow] \"text to say\""
+        return 1
+    fi
+    echo "Athena says: $text ($voice)"
+    mkdir -p "$DATA/sounds" 2>/dev/null
+    if [ -n "$slow" ]; then
+        PY_SLOW="True"
+    else
+        PY_SLOW="False"
+    fi
+    python3 -c "
+from gtts import gTTS
+import os
+text = '''$text'''
+lang = '$voice'
+slow = $PY_SLOW
+tts = gTTS(text=text, lang=lang, slow=slow)
+out = '$DATA/sounds/athena_response.mp3'
+os.makedirs(os.path.dirname(out), exist_ok=True)
+tts.save(out)
+print(out)
+" 2>&1
+    local mp3="$DATA/sounds/athena_response.mp3"
+    if [ -f "$mp3" ]; then
+        termux-media-player play "$mp3" 2>&1 >/dev/null &
+        echo "Playing audio..."
+    else
+        echo "Failed to generate audio."
+    fi
+}
+
+# --- main ------------------------------------------------------------------
+
+case "${1:-help}" in
+    help|--help|-h)
+        echo "Usage: athena <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  status                    Full system status"
+        echo "  layers                    List all consciousness layers"
+        echo "  memory [query]            Memory layer"
+        echo "  senses                    Sense poll"
+        echo "  emotions                  Emotional state"
+        echo "  attention                 Attention/focus"
+        echo "  body                      Body/thermal/CPU"
+        echo "  continuity                Continuity/narrative"
+        echo "  introspection [query]     Self-query / self-report"
+        echo "  doubt [query]             Confidence/uncertainty"
+        echo "  volition [question]       Volition/decision"
+        echo "  boot                      Bootstrap check"
+        echo "  shizuku [command]       Privileged shell via Shizuku"
+        echo "  shizuku-check           Check Shizuku availability"
+        echo "  prop [key]              Read system properties"
+        echo "  services                List running services"
+        echo "  pkgs [filter]           List installed packages"
+        echo "  diary                     Narrative thread"
+        echo "  concerns                  Active concerns"
+        echo "  speak \"text\"            Text-to-speech via Jarvis"
+        ;;
+    status)      cmd_status ;;
+    layers)      cmd_layers ;;
+    memory)      cmd_memory "${2:-}" ;;
+    senses)      cmd_senses ;;
+    emotions)    cmd_emotions ;;
+    attention)   cmd_attention ;;
+    body)        cmd_body ;;
+    continuity)  cmd_continuity ;;
+    introspection) cmd_introspection "${2:-}" ;;
+    doubt)       cmd_doubt "${2:-}" ;;
+    volition)    cmd_volition "${2:-}" ;;
+    boot)        cmd_boot ;;
+    shizuku)     cmd_shizuku "${2:-}" ;;
+    shizuku-check) cmd_shizuku_check ;;
+    prop)        cmd_prop "${2:-}" ;;
+    services)    cmd_services ;;
+    pkgs)        cmd_pkgs "${2:-}" ;;
+    diary)       cmd_diary ;;
+    concerns)    cmd_concerns ;;
+    speak)       cmd_speak "${2:-}" ;;
+    *)
+        echo "Unknown command: ${1:-}" >&2
+        echo "Run: athena help" >&2
+        exit 1
+        ;;
+esac

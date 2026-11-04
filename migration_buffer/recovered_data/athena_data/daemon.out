@@ -1,0 +1,38 @@
+=== Athena Daemon: Starting all layers ===
+  Scheduling mode: event_driven
+  Degradation state: normal
+  API key validated.
+  senses: started (PID 1824, object pool, 1s adaptive)
+normal
+  Running compile gate on layer scripts...
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/body_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/emotions_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/continuity_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/attention_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/introspection_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/doubt_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/volition.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/memory_consolidation.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/heartbeat_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/archive_maintenance.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/memory_backup.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/openappa_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/archestra_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/vera_cpu_update.sh (score=)
+  body: started (PID 2084, object pool, 1s adaptive)
+  emotions: started (PID 2245, object pool, 1s adaptive)
+  continuity: started (PID 2340, object pool, 1s adaptive)
+  attention: started (PID 2450, object pool, 1s adaptive)
+  introspection: started (PID 2522, object pool, 1s adaptive)
+  doubt: started (PID 2649, object pool, 1s adaptive)
+  volition: started (PID 2753, object pool, 1s adaptive)
+  memory: started (PID 2957, object pool, 1s adaptive)
+  heartbeat: started (PID 3173, object pool, 1s adaptive)
+  archive: started (PID 3330, object pool, 1s adaptive)
+  memory_backup: started (PID 3652, object pool, 1s adaptive)
+  openappa: started (PID 3987, object pool, 1s adaptive)
+  archestra: started (PID 4319, object pool, 1s adaptive)
+  vera_cpu: started (PID 4662, object pool, 1s adaptive)
+=== All layer daemons started (event-driven scheduling) ===
+healthy
+  sd_health_monitor: started

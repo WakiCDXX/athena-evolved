@@ -1,0 +1,1 @@
+{"input": {"battery": 70, "cpu_khz": 850000, "mem_pct": 62, "storage_pct": 77, "thermal": [], "throttling": false, "network_type": "unknown", "signal_dbm": 0, "emotions": {}, "attention_active": null, "session": 0}, "output": {"pattern": "normal", "thermal_status": "normal", "engagement": 0, "action": "continue_monitoring"}, "ts": 1791811577}

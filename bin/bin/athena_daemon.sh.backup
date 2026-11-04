@@ -1,0 +1,700 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# athena_daemon.sh — unified daemon manager for all consciousness layers.
+#
+# Enigma/Bombe Principle Applied: "Feed results back and redesign."
+# Each layer tracks success/failure rates. The daemon adapts intervals
+# based on performance. Failing layers get shorter retry intervals,
+# reliable layers get longer intervals to conserve resources.
+#
+# Uses event-driven adaptive scheduling instead of fixed-interval polling.
+# Layers are woken by Android lifecycle events, accessibility changes,
+# and explicit session state rather than continuous polling.
+#
+# Usage:
+#   athena_daemon.sh start      — launch all layer pollers as background daemons
+#   athena_daemon.sh stop       — stop all daemons (SIGTERM)
+#   athena_daemon.sh status     — show all daemon PIDs + last update times
+#   athena_daemon.sh logs       — tail all log files
+#   athena_daemon.sh one-shot   — run all layers once and exit
+#   athena_daemon.sh feedback   — show layer performance stats
+#   athena_daemon.sh degraded   — show current degradation state
+#   athena_daemon.sh session    — set session mode (active/idle/quiet)
+#
+# Layers polled:
+#   body        — body_update.sh poll  (default 120s)
+#   emotions    — emotions_update.sh decay (default 120s)
+#   continuity  — continuity_update.sh bootstrap (default 120s)
+#   senses      — sense_poll.sh _daemon (already running)
+#   attention   — attention_update.sh (default 60s, lightweight)
+#   introspection — introspection_update.sh report (default 120s)
+#   doubt       — doubt_update.sh decay (default 120s)
+#   volition    — volition.sh read (default 120s)
+#   memory      — memory_consolidation.sh consolidate (default 120s)
+#   heartbeat   — heartbeat_update.sh check (default 120s)
+#   archive     — archive_maintenance.sh (default 1800s)
+#   memory_backup — memory_backup.sh (default 1800s)
+
+set -o pipefail
+
+# Source central environment for API keys and config
+BASE_DIR="/root"
+BIN_DIR="$BASE_DIR/.local/bin"
+DATA_DIR="/storage/emulated/0/Android/data/com.termux/files/athena_data"
+PRIMARY="/storage/emulated/0/Android/data/com.termux/files/athena_data"
+INTERNAL="/sdcard/Android/data/com.termux/files/athena_data"
+FAILOVER_FILE="/root/.local/share/athena_failover"
+source "$BIN_DIR/athena_env.sh" 2>/dev/null
+BASE="$BASE_DIR"
+BIN="$BIN_DIR"
+DATA="$PRIMARY"
+PIDFILE="$DATA/athena_daemon.pid"
+LOGDIR="$DATA/daemon_logs"
+FEEDBACK_FILE="$DATA/daemon_feedback.json"
+DEGRADATION_FILE="$DATA/degradation_state.json"
+SESSION_STATE_FILE="$DATA/session_state.json"
+STRUCTURED_STATE_FILE="$DATA/screen_state.json"
+
+# Check for active failover — if SD card failed, use internal
+if [ -f "$FAILOVER_FILE" ]; then
+    DATA="$INTERNAL"
+    PIDFILE="$DATA/athena_daemon.pid"
+    LOGDIR="$DATA/daemon_logs"
+fi
+
+mkdir -p "$LOGDIR"
+mkdir -p "$DATA"
+touch "$PIDFILE"
+
+# --- initialization -------------------------------------------------
+
+init_feedback() {
+    if [ ! -f "$FEEDBACK_FILE" ]; then
+        python3 "$PYTHON_LIB/athena/daemon_init.py" 2>/dev/null
+    fi
+}
+
+init_degradation() {
+    if [ ! -f "$DEGRADATION_FILE" ]; then
+        python3 "$PYTHON_LIB/athena/daemon_init.py" 2>/dev/null
+    fi
+}
+
+init_session_state() {
+    if [ ! -f "$SESSION_STATE_FILE" ]; then
+        python3 "$PYTHON_LIB/athena/daemon_init.py" 2>/dev/null
+    fi
+}
+
+init_feedback
+init_degradation
+init_session_state
+
+# --- feedback system -------------------------------------------------
+# Enigma/Bombe: "feed results back and redesign"
+# Track each layer's success/failure over time. Adapt intervals.
+
+record_layer_result() {
+    local layer="$1"
+    local status="$2"  # success or fail
+    LAYER_NAME="$layer" LAYER_STATUS="$status" python3 "$PYTHON_LIB/athena/record_layer_result.py" 2>/dev/null
+}
+
+get_adapted_interval() {
+    local layer="$1"
+    local base_interval="$2"
+    LAYER_NAME="$layer" BASE_INTERVAL="$base_interval" FEEDBACK_FILE="$FEEDBACK_FILE" python3 "$PYTHON_LIB/athena/get_adapted_interval.py" 2>/dev/null || echo "$base_interval"
+}
+
+is_running() {
+    local pid="$1"
+    kill -0 "$pid" 2>/dev/null
+}
+
+sd_health_check() {
+    # Check if /sdcard is mounted and writable
+    if [ -d "/sdcard/Android/data/com.termux/files" ] && [ -w "/sdcard" ]; then
+        echo "healthy"
+    else
+        echo "unhealthy"
+    fi
+}
+
+show_feedback() {
+    if [ ! -f "$FEEDBACK_FILE" ]; then
+        echo "No feedback data yet."
+        return
+    fi
+    FEEDBACK_FILE="$FEEDBACK_FILE" python3 "$PYTHON_LIB/athena/show_feedback.py" 2>/dev/null
+}
+
+# --- degradation ladder ---------------------------------------------
+# Enigma/Bombe: progressive degradation with concrete recovery rules
+# States: normal → conserve → minimal → suspended → safe_shutdown
+
+get_degradation_state() {
+    DEGRADATION_FILE="$DEGRADATION_FILE" python3 "$PYTHON_LIB/athena/get_degradation_state.py" 2>/dev/null
+}
+
+set_degradation_state() {
+    local new_state="$1"
+    local reason="$2"
+    DEGRADATION_FILE="$DEGRADATION_FILE" NEW_STATE="$new_state" REASON="$reason" python3 "$PYTHON_LIB/athena/set_degradation_state.py" 2>/dev/null
+}
+
+check_degradation_triggers() {
+    # Evaluate system resources and set degradation state accordingly
+    local current_state=$(get_degradation_state)
+    local new_state="$current_state"
+    local reason=""
+
+    # Gather system metrics
+    local avail_kb=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}')
+    local thermal=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)
+    local battery=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 100)
+    local uptime_sec=$(cat /proc/uptime 2>/dev/null | awk '{print $1}' | cut -d. -f1)
+
+    # Check memory (impending OOM)
+    if [ -n "$avail_kb" ] && [ "$avail_kb" -lt 153600 ]; then
+        new_state="minimal"
+        reason="ram_critical_${avail_kb}kb"
+    elif [ -n "$avail_kb" ] && [ "$avail_kb" -lt 307200 ]; then
+        if [ "$current_state" = "normal" ]; then
+            new_state="conserve"
+            reason="ram_low_${avail_kb}kb"
+        fi
+    fi
+
+    # Check thermal
+    if [ "$thermal" -gt 85 ] 2>/dev/null; then
+        if [ "$current_state" = "normal" ] || [ "$current_state" = "conserve" ]; then
+            new_state="conserve"
+            reason="thermal_${thermal}mC"
+        fi
+    fi
+    if [ "$thermal" -gt 95 ] 2>/dev/null; then
+        new_state="minimal"
+        reason="thermal_critical_${thermal}mC"
+    fi
+
+    # Check battery
+    if [ "$battery" -lt 5 ] 2>/dev/null && [ "$battery" -gt 0 ]; then
+        new_state="minimal"
+        reason="battery_${battery}%"
+    elif [ "$battery" -lt 15 ] 2>/dev/null && [ "$battery" -gt 0 ]; then
+        if [ "$current_state" = "normal" ]; then
+            new_state="conserve"
+            reason="battery_${battery}%"
+        fi
+    fi
+
+    # Check latency (p95)
+    if [ -f "$DATA/daemon_latency.json" ]; then
+        local p95_latency=$(DATA_DIR="$DATA" python3 "$PYTHON_LIB/athena/check_p95_latency.py" 2>/dev/null)
+        if [ "$p95_latency" -gt 5000 ] 2>/dev/null; then
+            if [ "$current_state" = "normal" ]; then
+                new_state="conserve"
+                reason="latency_${p95_latency}ms"
+            fi
+        fi
+    fi
+
+    # Apply state change if needed
+    if [ "$new_state" != "$current_state" ]; then
+        set_degradation_state "$new_state" "$reason"
+        echo "Degradation: $current_state → $new_state ($reason)"
+    fi
+}
+
+apply_degradation() {
+    # Adjust layer behavior based on current degradation state
+    DEGRADATION_FILE="$DEGRADATION_FILE" SESSION_STATE_FILE="$SESSION_STATE_FILE" DATA_DIR="$DATA" python3 "$PYTHON_LIB/athena/apply_degradation.py" 2>/dev/null
+}
+
+# Recovery rules for degradation states
+# - RAM low/impending OOM: Drop image buffers first, unload detector, shorten model context, reduce OCR queue, fall back to accessibility-only
+# - CPU overloaded/p95 latency: Coalesce events, cancel superseded jobs, increase diff interval, run at most one expensive worker
+# - Thermal rise: Stop continuous inference, drop detector/LLM, reduce workload
+# - Battery low: Suspend capture, OCR, vision, background listening
+# - OCR crash: Open circuit breaker, retain tree/pixel path, retry after cooldown with smaller crop
+# - Detector crash: Disable detection for session, keep accessibility and OCR
+# - LLM timeout/schema failure: Cancel, discard malformed output, close runtime, return to deterministic rules
+# - Accessibility disabled: Mark tree unavailable, stop node-ID actions, use lower-confidence read-only visual mode
+# - Shizuku permission lost: Fail closed, remove capability, continue with direct APIs/accessibility
+# - MediaProjection denied: Stop capture, release buffers, do not re-request in a loop
+
+recover_from_crash() {
+    local layer="$1"
+    local crash_type="$2"
+    CRASH_LAYER="$layer" CRASH_TYPE="$crash_type" DEGRADATION_FILE="$DEGRADATION_FILE" python3 "$PYTHON_LIB/athena/recover_from_crash.py" 2>/dev/null
+}
+
+# --- adaptive event-driven scheduler --------------------------------
+# Enigma/Bombe: Use events to wake cheap stages instead of continuous polling
+# Session modes: event_driven (default), fixed, hybrid
+
+get_session_mode() {
+    SESSION_STATE_FILE="$SESSION_STATE_FILE" python3 "$PYTHON_LIB/athena/get_session_mode.py" 2>/dev/null
+}
+
+set_session_mode() {
+    local mode="$1"
+    SESSION_STATE_FILE="$SESSION_STATE_FILE" SESSION_MODE="$mode" python3 "$PYTHON_LIB/athena/set_session_mode.py" 2>/dev/null
+}
+
+# Screen state hash for detecting stable vs changed screens
+get_screen_hash() {
+    # Quick hash of screen state for change detection
+    # Reads from screen_state.json (structured state), not session_state.json
+    STRUCTURED_STATE_FILE="$STRUCTURED_STATE_FILE" python3 "$PYTHON_LIB/athena/get_screen_hash.py" 2>/dev/null
+}
+
+record_screen_event() {
+    local event_type="$1"
+    local detail="${2:-}"
+    EVENT_TYPE="$event_type" EVENT_DETAIL="$detail" SESSION_STATE_FILE="$SESSION_STATE_FILE" STRUCTURED_STATE_FILE="$STRUCTURED_STATE_FILE" python3 "$PYTHON_LIB/athena/record_screen_event.py" 2>/dev/null
+}
+
+get_event_based_interval() {
+    local layer="$1"
+    local base_interval="$2"
+    local session_mode=$(get_session_mode)
+    local screen_hash=$(get_screen_hash)
+    SESSION_STATE_FILE="$SESSION_STATE_FILE" SCREEN_HASH="$screen_hash" BASE_INTERVAL="$base_interval" python3 "$PYTHON_LIB/athena/get_event_based_interval.py" 2>/dev/null || echo "$base_interval"
+}
+
+# --- layer startup with degradation awareness -----------------------
+
+start_subshell() {
+    local name="$1" cmd="$2" interval="$3"
+    local pidfile="$DATA/${name}.pid"
+    local adaptive="${4:-true}"  # Enable event-driven scheduling by default
+
+    # Stop existing if any — kill by pidfile only
+    local old_pid
+    old_pid=$(cat "$pidfile" 2>/dev/null)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        kill_tree_by_pid "$old_pid"
+    fi
+    rm -f "$pidfile" "$pidfile.wrapper" 2>/dev/null
+
+    local adapted_interval="$interval"
+    if [ "$adaptive" = "true" ]; then
+        # Get feedback-adapted interval
+        adapted_interval=$(get_adapted_interval "$name" "$interval")
+        # Get event-driven interval if in event-driven mode
+        local event_interval=$(get_event_based_interval "$name" "$interval")
+        # Use the shorter of the two (more responsive)
+        # Use python3 for float comparison since bash -lt doesn't work with decimals
+        if [ "$event_interval" != "$adapted_interval" ] && python3 -c "exit(0 if float('$event_interval') < float('$adapted_interval') else 1)" 2>/dev/null; then
+            adapted_interval="$event_interval"
+        fi
+    fi
+
+    # Check degradation config to see if this layer should even run
+    local degraded=$(get_degradation_state)
+    local active_layers=$(DATA_DIR="$DATA" python3 "$PYTHON_LIB/athena/get_active_layers.py" 2>/dev/null)
+
+    if [ "$degraded" = "suspended" ] || [ "$degraded" = "safe_shutdown" ]; then
+        # Don't start layers in suspended/shutdown state
+        echo "  $name: SKIPPED (degraded: $degraded)"
+        return
+    fi
+
+    local layer_active=$(echo "$active_layers" | tr ',' '\n' | grep -c "^${name}$" 2>/dev/null || true)
+    layer_active=${layer_active:-0}
+    if [ "$layer_active" -eq 0 ] && [ "$degraded" = "conserve" ] 2>/dev/null; then
+        echo "  $name: SKIPPED (conserve mode - not in active layers)"
+        return
+    fi
+
+    # Launch persistent object-pool worker (no per-cycle bash fork)
+    # cmd is like "$BIN/body_update.sh poll" — split into script + args
+    local script_path="${cmd% *}"
+    local cmd_args="${cmd#* }"
+    # If cmd has no space, cmd_args defaults to poll
+    # Actually fix: extract properly
+    script_path="$(echo "$cmd" | awk '{print $1}')"
+    cmd_args="$(echo "$cmd" | awk '{for(i=2;i<=NF;i++) printf "%s ", $i; print ""}' | sed 's/ *$//')"
+    [ -z "$cmd_args" ] && cmd_args="poll"
+
+    # Launch persistent worker as background process (stays alive between cycles)
+    setsid bash -c "exec '$BIN/layer_worker.sh' '$name' '$script_path' '$cmd_args' '$adapted_interval' '$pidfile' '$DATA'" &
+    local new_pid=$!
+    echo "$new_pid" > "$pidfile"
+    echo "$new_pid" > "$pidfile.wrapper"
+    echo "  $name: started (PID $new_pid, object pool, ${adapted_interval}s adaptive)"
+    echo "$name:$adapted_interval" > "$DATA/${name}_interval.adapted"
+}
+
+acquire_wake_lock() {
+    termux-wake-lock 2>/dev/null
+}
+
+release_wake_lock() {
+    termux-wake-unlock 2>/dev/null
+}
+
+stop_subshell() {
+    local name="$1"
+    local pidfile="$DATA/${name}.pid"
+    local pid
+    pid=$(cat "$pidfile" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        kill_tree_by_pid "$pid"
+        echo "  $name: stopped (was PID $pid)"
+    else
+        [ -n "$pid" ] && echo "  $name: not running (stale PID $pid)"
+        [ -z "$pid" ] && echo "  $name: no PID file"
+    fi
+    rm -f "$pidfile" "$pidfile.wrapper"
+}
+
+kill_tree_by_pid() {
+    local pid="$1"
+    # Kill the process and all its children
+    pids=$(ps -o PID --no-headers --ppid "$pid" 2>/dev/null; echo "$pid")
+    for p in $pids; do
+        kill -TERM "$p" 2>/dev/null
+    done
+    sleep 0.5
+    for p in $pids; do
+        kill -KILL "$p" 2>/dev/null
+    done
+}
+
+# --- main --------------------------------------------------------------------
+
+case "${1:-help}" in
+    start)
+        echo "=== Athena Daemon: Starting all layers ==="
+        echo "  Scheduling mode: $(get_session_mode)"
+
+        # Clean up any orphaned processes from previous crashes/restarts
+        for name in body emotions continuity attention introspection doubt volition memory heartbeat senses archive memory_backup; do
+            pfile="$DATA/${name}.pid"
+            opid=$(cat "$pfile" 2>/dev/null)
+            if [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null; then
+                kill_tree_by_pid "$opid" 2>/dev/null
+            fi
+            rm -f "$pfile" "$pfile.wrapper" 2>/dev/null
+        done
+        if [ -f "$DATA/sense_poll.pid" ]; then
+            spid=$(cat "$DATA/sense_poll.pid" 2>/dev/null)
+            if [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
+                kill_tree_by_pid "$spid" 2>/dev/null
+            fi
+            rm -f "$DATA/sense_poll.pid"
+        fi
+        if [ -f "$DATA/sd_health_monitor.pid" ]; then
+            sdp=$(cat "$DATA/sd_health_monitor.pid" 2>/dev/null)
+            if [ -n "$sdp" ] && kill -0 "$sdp" 2>/dev/null; then
+                kill_tree_by_pid "$sdp" 2>/dev/null
+            fi
+            rm -f "$DATA/sd_health_monitor.pid"
+        fi
+
+        # Check current degradation state
+        local_degraded=$(get_degradation_state)
+        echo "  Degradation state: $local_degraded"
+
+        # Memory guard: check available RAM
+        avail_kb=$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}')
+        if [ -z "$avail_kb" ] || [ "$avail_kb" -lt 307200 ]; then
+            echo "  WARNING: Low memory (${avail_kb:-0} KB available). Starting light layers only."
+            set_degradation_state "conserve" "ram_low_startup_${avail_kb}kb"
+        fi
+
+        # API key validation
+        if [ -z "$OPENAI_API_KEY" ] || echo "$OPENAI_API_KEY" | grep -qE "sk-or-v1-(REPLACE|invalid|test|placeholder)"; then
+            echo "  WARNING: OPENAI_API_KEY missing or invalid."
+        else
+            echo "  API key validated."
+        fi
+
+        # senses — launch sense_poll.sh as a proper daemon (always first)
+        if [ -f "$DATA/sense_poll.pid" ]; then
+            old_spid=$(cat "$DATA/sense_poll.pid" 2>/dev/null)
+            if [ -n "$old_spid" ] && kill -0 "$old_spid" 2>/dev/null; then
+                kill_tree_by_pid "$old_spid" 2>/dev/null
+            fi
+            rm -f "$DATA/sense_poll.pid" "$DATA/sense_poll.pid.wrapper" 2>/dev/null
+        fi
+        start_subshell "senses" "$BIN/sense_poll.sh _daemon" "${INTERVAL_AUTO:-60}"
+
+        # Acquire wake-lock so MIUI doesn't OOM-kill Termux
+        acquire_wake_lock
+
+        # Load degradation config
+        apply_degradation
+
+        # Launch layers sequentially with staggered delays
+        # Event-driven adaptive scheduling replaces fixed-interval polling
+        if [ "$local_degraded" = "normal" ] || [ "$local_degraded" = "conserve" ]; then
+            start_subshell "body" "$BIN/body_update.sh poll" "${INTERVAL_BODY:-120}"
+            sleep 0.5
+
+            start_subshell "emotions" "$BIN/emotions_update.sh decay" "${INTERVAL_EMO:-120}"
+            sleep 0.5
+
+            start_subshell "continuity" "$BIN/continuity_update.sh bootstrap" "${INTERVAL_CONT:-120}"
+            sleep 0.5
+
+            start_subshell "attention" "$BIN/attention_update.sh read" "${INTERVAL_ATTN:-60}"
+            sleep 0.5
+
+            start_subshell "introspection" "$BIN/introspection_update.sh report" "${INTERVAL_INTROS:-120}"
+            sleep 0.5
+
+            start_subshell "doubt" "$BIN/doubt_update.sh decay" "${INTERVAL_DOUBT:-120}"
+            sleep 0.5
+
+            start_subshell "volition" "$BIN/volition.sh read" "${INTERVAL_VOL:-120}"
+            sleep 0.5
+
+            start_subshell "memory" "$BIN/memory_consolidation.sh consolidate" "${INTERVAL_MEM:-120}"
+            sleep 0.5
+
+            start_subshell "heartbeat" "$BIN/heartbeat_update.sh check" "${INTERVAL_HB:-120}"
+            sleep 0.5
+
+            start_subshell "archive" "$BIN/archive_maintenance.sh" "${INTERVAL_ARCHIVE:-1800}"
+            sleep 0.5
+
+            start_subshell "memory_backup" "$BIN/memory_backup.sh" "${INTERVAL_ARCHIVE:-1800}"
+            sleep 0.5
+
+            echo "=== All layer daemons started (event-driven scheduling) ==="
+        else
+            # Minimal/suspended: only light layers
+            start_subshell "attention" "$BIN/attention_update.sh read" "${INTERVAL_ATTN:-60}"
+            echo "=== Minimal layer daemons started ==="
+        fi
+
+        # Start SD card health monitor
+        sd_health_check
+        echo "  sd_health_monitor: started"
+
+        # Record initial session state
+        record_screen_event "daemon_start" "mode=$(get_session_mode)"
+
+        # Initialize latency tracking
+        if [ ! -f "$DATA/daemon_latency.json" ]; then
+            DATA_DIR="$DATA" python3 "$PYTHON_LIB/athena/init_latency.py" 2>/dev/null
+        fi
+        ;;
+
+    stop)
+        echo "=== Athena Daemon: Stopping all layers ==="
+        release_wake_lock
+
+        stop_subshell "body"
+        stop_subshell "emotions"
+        stop_subshell "continuity"
+        stop_subshell "attention"
+        stop_subshell "introspection"
+        stop_subshell "doubt"
+        stop_subshell "volition"
+        stop_subshell "memory"
+        stop_subshell "heartbeat"
+        stop_subshell "archive"
+        stop_subshell "memory_backup"
+
+        if [ -f "$DATA/sense_poll.pid" ]; then
+            spid=$(cat "$DATA/sense_poll.pid" 2>/dev/null)
+            if [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
+                kill_tree_by_pid "$spid"
+                echo "  senses: stopped (was PID $spid)"
+            fi
+            rm -f "$DATA/sense_poll.pid"
+        fi
+
+        if [ -f "$DATA/sd_health_monitor.pid" ]; then
+            sdpid=$(cat "$DATA/sd_health_monitor.pid" 2>/dev/null)
+            if [ -n "$sdpid" ] && kill -0 "$sdpid" 2>/dev/null; then
+                kill_tree_by_pid "$sdpid"
+                echo "  sd_health_monitor: stopped (was PID $sdpid)"
+            fi
+            rm -f "$DATA/sd_health_monitor.pid"
+        fi
+
+        echo "=== All layer daemons stopped ==="
+        ;;
+
+    status)
+        echo "=== Athena Daemon Status ==="
+        echo ""
+        echo "--- Session Mode ---"
+        echo "  Mode: $(get_session_mode)"
+        echo "  Degradation: $(get_degradation_state)"
+        echo ""
+        echo "--- Layer daemons ---"
+        for name in body emotions continuity attention introspection doubt volition memory heartbeat archive memory_backup; do
+            pidfile="$DATA/${name}.pid"
+            pid=$(cat "$pidfile" 2>/dev/null)
+            if [ -n "$pid" ] && is_running "$pid"; then
+                echo "  $name: RUNNING (PID $pid)"
+            else
+                echo "  $name: STOPPED"
+                [ -n "$pid" ] && rm -f "$pidfile"
+            fi
+        done
+        # senses — separate PID file (sense_poll.sh _daemon)
+        if [ -f "$DATA/sense_poll.pid" ]; then
+            spid=$(cat "$DATA/sense_poll.pid" 2>/dev/null)
+            if [ -n "$spid" ] && is_running "$spid"; then
+                echo "  senses: RUNNING (sense_poll.sh PID $spid)"
+            else
+                echo "  senses: STOPPED (stale PID file)"
+            fi
+        else
+            echo "  senses: STOPPED"
+        fi
+        echo ""
+        echo "--- Layer data freshness ---"
+        for name in body emotions continuity attention introspection doubt volition memory heartbeat archive memory_backup; do
+            statefile="$DATA/${name}.json"
+            if [ -f "$statefile" ] && [ -s "$statefile" ]; then
+                ts=$(STATEFILE="$statefile" python3 "$PYTHON_LIB/athena/get_state_timestamp.py" 2>/dev/null || echo 0)
+                age=$(( $(date +%s) - ts ))
+                if [ $age -lt 180 ]; then
+                    echo "  $name: ✅ ${age}s ago"
+                elif [ $age -lt 900 ]; then
+                    echo "  $name: ⚠️  ${age}s ago"
+                else
+                    echo "  $name: ❌ ${age}s ago"
+                fi
+            else
+                echo "  $name: ⚠️  no data file"
+            fi
+        done
+        # senses freshness from senses.log
+        if [ -f "$DATA/senses.log" ] && [ -s "$DATA/senses.log" ]; then
+            last_ts=$(tail -1 "$DATA/senses.log" 2>/dev/null | python3 "$PYTHON_LIB/athena/get_senses_timestamp.py" 2>/dev/null || echo 0)
+            sage=$(( $(date +%s) - last_ts ))
+            if [ $sage -lt 120 ]; then
+                echo "  senses: ✅ ${sage}s ago"
+            elif [ $sage -lt 300 ]; then
+                echo "  senses: ⚠️  ${sage}s ago"
+            else
+                echo "  senses: ❌ ${sage}s ago"
+            fi
+        else
+            echo "  senses: ⚠️  no data"
+        fi
+        ;;
+
+    logs)
+        echo "=== Daemon Logs ==="
+        ls -la "$LOGDIR" 2>/dev/null
+        echo ""
+        for f in "$LOGDIR"/*.log; do
+            [ -f "$f" ] || continue
+            echo "--- $(basename $f) ---"
+            tail -3 "$f"
+            echo ""
+        done
+        ;;
+
+    one-shot)
+        echo "=== Running all layers once ==="
+        echo "--- body ---"
+        "$BIN/body_update.sh" poll 2>&1 | head -5
+        echo "--- emotions ---"
+        "$BIN/emotions_update.sh" read 2>&1 | head -5
+        echo "--- continuity ---"
+        "$BIN/continuity_update.sh" read 2>&1 | head -5
+        echo "--- senses ---"
+        "$BIN/sense_poll.sh" one-shot 2>&1 | python3 -m json.tool 2>/dev/null | head -5
+        echo "--- attention ---"
+        "$BIN/attention_update.sh" read 2>&1 | head -5
+        echo "=== Done ==="
+        ;;
+
+    health)
+        echo "=== Athena Storage Health ==="
+        bash "$BIN/sdcard_health.sh" status
+        echo ""
+        echo "--- Layer data freshness ---"
+        for name in body emotions continuity attention introspection doubt volition memory heartbeat senses archive memory_backup; do
+            statefile="$DATA/${name}.json"
+            if [ -f "$statefile" ]; then
+                ts=$(STATEFILE="$statefile" python3 "$PYTHON_LIB/athena/get_state_timestamp.py" 2>/dev/null || echo 0)
+                age=$(( $(date +%s) - ts ))
+                if [ $age -lt 180 ]; then echo "  $name: ✅ ${age}s ago ($DATA)";
+                elif [ $age -lt 900 ]; then echo "  $name: ⚠️  ${age}s ago ($DATA)";
+                else echo "  $name: ❌ ${age}s ago ($DATA)"; fi
+            else
+                echo "  $name: ❌ missing ($DATA)"
+            fi
+        done
+        ;;
+    restart)
+        echo "=== Athena Daemon: Restarting all layers ==="
+        bash "$BIN/athena_daemon.sh" stop
+        sleep 1
+        bash "$BIN/athena_daemon.sh" start
+        ;;
+
+    degraded)
+        echo "=== Athena Degradation State ==="
+        DEGRADATION_FILE="$DEGRADATION_FILE" python3 "$PYTHON_LIB/athena/show_degradation.py" 2>/dev/null
+        ;;
+
+    session)
+        case "${2:-help}" in
+            active)
+                set_session_mode "interactive"
+                echo "Session mode: interactive"
+                record_screen_event "session_active" "user_interaction"
+                ;;
+            quiet)
+                set_session_mode "quiet"
+                echo "Session mode: quiet"
+                record_screen_event "session_quiet" "no_activity"
+                ;;
+            idle)
+                set_session_mode "idle"
+                echo "Session mode: idle"
+                record_screen_event "session_idle" "screen_off_or_lock"
+                ;;
+            help|*)
+                echo "Usage: athena_daemon.sh session {active|quiet|idle}"
+                echo "  active — user is interacting (500ms-2s intervals)"
+                echo "  quiet  — low activity (2-5s cheap checks)"
+                echo "  idle   — screen off/locked (event-triggered only)"
+                ;;
+        esac
+        ;;
+
+    feedback)
+        show_feedback
+        ;;
+
+    help|--help|-h|*)
+        echo "Usage: athena_daemon.sh {start|stop|status|restart|logs|one-shot|feedback|degraded|session}"
+        echo ""
+        echo "Commands:"
+        echo "  start      Launch all layer pollers with event-driven scheduling"
+        echo "  stop       Stop all daemons (SIGTERM)"
+        echo "  status     Show daemon PIDs + layer data freshness + degradation state"
+        echo "  logs       Tail daemon log files"
+        echo "  restart    Stop and restart all layer daemons"
+        echo "  one-shot   Run all layers once and exit"
+        echo "  degraded   Show current degradation state"
+        echo "  session    Set session mode (active/quiet/idle)"
+        echo "  feedback   Show layer performance stats"
+        echo ""
+        echo "Scheduling: Event-driven adaptive (arm set {250ms, 500ms, 1s, 2s, 5s})"
+        echo "  Active: 250ms-500ms, Interactive: 500ms-2s, Quiet: 2-5s, Idle: event-triggered"
+        echo ""
+        echo "Degradation ladder: normal → conserve → minimal → suspended → safe_shutdown"
+        echo ""
+        echo "Layer intervals (override with env vars):"
+        echo "  ATHENA_BODY_INTERVAL    (default 120s)"
+        echo "  ATHENA_EMO_INTERVAL     (default 120s)"
+        echo "  ATHENA_CONT_INTERVAL    (default 120s)"
+        echo "  ATHENA_ATTN_INTERVAL    (default 60s)"
+        echo ""
+        echo "Enigma/Bombe: intervals adapt based on success/failure feedback."
+        ;;
+esac

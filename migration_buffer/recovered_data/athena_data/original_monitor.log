@@ -1,0 +1,40 @@
+=== snap 1299 s (Mon Oct 12 14:24:02 PST 2026) ===
+--- layer workers ===
+--- free ---
+               total        used        free      shared  buff/cache   available
+Mem:            1831        1108         139           8         679         723
+Swap:           1373         651         722
+--- dmesg kill events (tail) ---
+--- openappa/archestra/vera_cpu json ---
+=== snap 1320 s (Mon Oct 12 14:24:23 PST 2026) ===
+--- layer workers ===
+--- free ---
+               total        used        free      shared  buff/cache   available
+Mem:            1831        1153          74           8         702         678
+Swap:           1373         653         720
+--- dmesg kill events (tail) ---
+--- openappa/archestra/vera_cpu json ---
+=== snap 1340 s (Mon Oct 12 14:24:43 PST 2026) ===
+--- layer workers ===
+--- free ---
+               total        used        free      shared  buff/cache   available
+Mem:            1831        1175          75           8         688         655
+Swap:           1373         646         727
+--- dmesg kill events (tail) ---
+--- openappa/archestra/vera_cpu json ---
+=== snap 1360 s (Mon Oct 12 14:25:03 PST 2026) ===
+--- layer workers ===
+--- free ---
+               total        used        free      shared  buff/cache   available
+Mem:            1831        1178          82           8         680         652
+Swap:           1373         647         726
+--- dmesg kill events (tail) ---
+--- openappa/archestra/vera_cpu json ---
+=== snap 1381 s (Mon Oct 12 14:25:24 PST 2026) ===
+--- layer workers ===
+--- free ---
+               total        used        free      shared  buff/cache   available
+Mem:            1831        1179          91           8         673         652
+Swap:           1373         643         730
+--- dmesg kill events (tail) ---
+--- openappa/archestra/vera_cpu json ---

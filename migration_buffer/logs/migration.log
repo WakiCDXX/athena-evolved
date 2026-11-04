@@ -1,0 +1,5 @@
+[2026-11-04T23:29:08.214827] Starting migration integration process...
+[2026-11-04T23:29:08.219712] Successfully merged state: old_device_quick_report.json
+[2026-11-04T23:29:08.227440] Archived binary/config: athena_data_backup.tar.gz
+[2026-11-04T23:29:08.230936] Successfully merged state: .openclaude.json
+[2026-11-04T23:29:08.231557] Migration process complete.

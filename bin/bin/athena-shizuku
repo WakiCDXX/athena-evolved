@@ -1,0 +1,37 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# athena-shizuku — privileged shell access via Shizuku
+# Usage:
+#   athena-shizuku <command>    — run a single command with privileged shell
+#   athena-shizuku              — launch interactive rish shell (ice:/ $)
+#
+# Requires: Shizuku app authorization for com.termux
+# Run from: cd storage/rish && bash rish
+
+RISHDIR="/root/storage/rish"
+DEX="$RISHDIR/rish_shizuku.dex"
+
+if [ ! -f "$DEX" ]; then
+    echo "ERROR: rish_shizuku.dex not found at $DEX"
+    echo "  Make sure Shizuku is installed and rish file is in storage/rish/"
+    exit 1
+fi
+
+# Android 14+ requires DEX to be non-writable for app_process
+if [ $(getprop ro.build.version.sdk) -ge 34 ]; then
+    chmod 400 "$DEX" 2>/dev/null
+fi
+
+export RISH_APPLICATION_ID="com.termux"
+export ANDROID_CACHE="/data/data/com.termux/files/cache/dalvik-cache"
+
+if [ $# -eq 0 ]; then
+    # Interactive mode — launch rish shell
+    cd "$RISHDIR" && exec bash rish
+else
+    # Command mode — pass command via heredoc to bash rish
+    CMD="$*"
+    bash "$RISHDIR/rish" <<EOF
+$CMD
+exit
+EOF
+fi

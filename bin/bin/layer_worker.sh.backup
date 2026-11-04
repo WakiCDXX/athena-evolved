@@ -1,0 +1,126 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# layer_worker.sh — persistent object-pool worker for a single consciousness layer.
+#
+# Replaces the kill/respawn cycle in athena_daemon.sh start_subshell().
+# Instead of forking a new bash + layer script every poll cycle
+# (setsid bash -c "while true; do cmd; sleep ..."), this keeps ONE bash
+# process alive indefinitely. The layer script is sourced each cycle
+# (cheap — same process memory) and its case block executes with the
+# requested command args.
+#
+# Usage (backgrounded by athena_daemon.sh):
+#   layer_worker.sh <name> <script_path> <command_args> <interval> <pidfile> &
+#
+# Enigma/Bombe Principle: "A worker that never dies is cheaper than one that
+# is constantly reborn." — Constraint: minimize process creation overhead.
+# Only ONE bash process stays alive (vs N forks per cycle).
+
+set -o pipefail
+
+NAME="${1:-}"
+SCRIPT="${2:-}"
+CMD_ARGS="${3:-poll}"
+INTERVAL="${4:-120}"
+PIDFILE="${5:-}"
+DATA="${6:-/storage/emulated/0/Android/data/com.termux/files/athena_data}"
+
+# Bank switching: compressed state files live here
+BANK_DIR="$DATA/.bank"
+mkdir -p "$BANK_DIR"
+
+[ -z "$NAME" ] && exit 1
+[ -z "$SCRIPT" ] && exit 1
+[ ! -f "$SCRIPT" ] && exit 1
+
+# Source athena_env.sh for DMA prefetch and other helpers
+BASE_DIR="/root"
+source "$BASE_DIR/.local/bin/athena_env.sh" 2>/dev/null
+# Initialize lookup tables (pre-computes adaptation curves, thresholds)
+lut_ensure_ready 2>/dev/null
+
+# Report our PID to the daemon
+echo $$ > "$PIDFILE"
+
+# Track stats for adaptive interval
+SUCCESS=0
+FAIL=0
+
+# Bank Switching: compress layer state to disk, replace with stub.
+# Frees RAM by offloading inactive layer JSON to compressed .bank files.
+# On wake, decompress back into place.
+bank_swap_out() {
+    local statefile="$DATA/${NAME}.json"
+    local bankfile="$BANK_DIR/${NAME}.json.gz"
+    if [ -f "$statefile" ]; then
+        # Compress and replace with minimal stub
+        gzip -c "$statefile" > "$bankfile" 2>/dev/null && rm -f "$statefile"
+        # Write minimal stub so other scripts don't fail on missing file
+        echo '{"banked":true,"timestamp":'$(date +%s)'}' > "$statefile" 2>/dev/null
+    fi
+}
+
+bank_swap_in() {
+    local statefile="$DATA/${NAME}.json"
+    local bankfile="$BANK_DIR/${NAME}.json.gz"
+    if [ -f "$bankfile" ]; then
+        gunzip -c "$bankfile" > "$statefile" 2>/dev/null && rm -f "$bankfile"
+    fi
+}
+
+# Main persistent loop — no bash fork per cycle, just source + case exec
+while :; do
+    # Check degradation state before each run
+    export ATHENA_DATA_DIR="$DATA"
+    current_state=$(python3 "$BASE_DIR/.local/lib/python/athena/degradation_state.py" 2>/dev/null || echo 'normal')
+
+    if [ "$current_state" = "suspended" ] || [ "$current_state" = "safe_shutdown" ]; then
+        # Bank out our state before sleeping
+        bank_swap_out
+        sleep 30
+        continue
+    fi
+
+    # Bank switch IN: restore state from compressed .bank file
+    bank_swap_in
+
+    # DMA Pattern: prefetch this layer's JSON into page cache
+    dma_prefetch "$NAME"
+
+    # Source the layer script — its case "${1:-read}" block executes
+    # with positional args set to CMD_ARGS
+    set -- "$CMD_ARGS"
+    source "$SCRIPT" >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        SUCCESS=$((SUCCESS + 1))
+    else
+        FAIL=$((FAIL + 1))
+    fi
+
+    # Record result in daemon_feedback.json via external script
+# Also outputs adapted_interval to stdout for capture
+    export ATHENA_LAYER_NAME="$NAME"
+    export ATHENA_LAYER_SCRIPT="$SCRIPT"
+    export ATHENA_CMD_ARGS="$CMD_ARGS"
+    export ATHENA_SUCCESS="$SUCCESS"
+    export ATHENA_FAIL="$FAIL"
+    adapted=$(python3 "$BASE_DIR/.local/lib/python/athena/layer_worker.py" 2>/dev/null || echo "$INTERVAL")
+
+    # Event-driven interval override: re-check session mode on every cycle
+    # This allows sub-second polling when screen is active (interactive mode)
+    event_interval=$(SESSION_STATE_FILE="$DATA/session_state.json" \
+        SCREEN_HASH="$(cat "$DATA/session_state.json" 2>/dev/null | python3 -c "import sys,json;print(json.load(sys.stdin).get('screen_hash',''))" 2>/dev/null)" \
+        BASE_INTERVAL="$INTERVAL" \
+        python3 "$BASE_DIR/.local/lib/python/athena/get_event_based_interval.py" 2>/dev/null || echo "")
+    if [ -n "$event_interval" ] && python3 -c "exit(0 if float('$event_interval') < float('$adapted') else 1)" 2>/dev/null; then
+        adapted="$event_interval"
+    fi
+
+    # Bank switch OUT: compress state to disk before sleeping
+    bank_swap_out
+
+    # Ring Buffer: cap layer log files to prevent unbounded growth
+    # Like SNES OAM / Mega Drive VDMAC — fixed-size buffer, wrap-around
+    log_rotate_all 2>/dev/null
+
+    sleep "$adapted"
+done

@@ -1,0 +1,79 @@
+=== STARTING ORIGINAL 13-LAYER DAEMON ===
+=== Athena Daemon: Starting all layers ===
+  Scheduling mode: event_driven
+  Degradation state: normal
+  API key validated.
+  senses: started (PID 12597, object pool, 1s adaptive)
+normal
+  Running compile gate on layer scripts...
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/body_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/emotions_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/continuity_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/attention_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/introspection_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/doubt_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/volition.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/memory_consolidation.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/heartbeat_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/archive_maintenance.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/memory_backup.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/openappa_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/archestra_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/vera_cpu_update.sh (score=)
+  body: started (PID 12795, object pool, 1s adaptive)
+  emotions: started (PID 12827, object pool, 1s adaptive)
+  continuity: started (PID 12872, object pool, 1s adaptive)
+  attention: started (PID 12992, object pool, 1s adaptive)
+  introspection: started (PID 13070, object pool, 1s adaptive)
+  doubt: started (PID 13203, object pool, 1s adaptive)
+  volition: started (PID 13309, object pool, 1s adaptive)
+  memory: started (PID 13448, object pool, 1s adaptive)
+  heartbeat: started (PID 13590, object pool, 1s adaptive)
+  archive: started (PID 13739, object pool, 1s adaptive)
+  memory_backup: started (PID 13975, object pool, 1s adaptive)
+  openappa: started (PID 14159, object pool, 1s adaptive)
+  archestra: started (PID 14390, object pool, 1s adaptive)
+  vera_cpu: started (PID 14600, object pool, 1s adaptive)
+=== All layer daemons started (event-driven scheduling) ===
+healthy
+  sd_health_monitor: started
+start_exit=0
+--- round 1 snapshot ---
+workers=17
+python_forks=5
+openappa_pids= rss=
+free_mem=688
+dmesg=0
+=== STARTING ORIGINAL 13-LAYER DAEMON ===
+=== Athena Daemon: Starting all layers ===
+  Scheduling mode: event_driven
+  Degradation state: normal
+  API key validated.
+  senses: started (PID 17881, object pool, 1s adaptive)
+normal
+  Running compile gate on layer scripts...
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/body_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/emotions_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/continuity_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/attention_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/introspection_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/doubt_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/volition.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/memory_consolidation.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/heartbeat_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/archive_maintenance.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/memory_backup.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/openappa_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/archestra_update.sh (score=)
+  COMPILE GATE PASS: /data/data/com.termux/files/home/.local/bin/vera_cpu_update.sh (score=)
+  body: started (PID 18135, object pool, 1s adaptive)
+  emotions: started (PID 18397, object pool, 1s adaptive)
+  continuity: started (PID 18486, object pool, 1s adaptive)
+  attention: started (PID 18547, object pool, 1s adaptive)
+  introspection: started (PID 18677, object pool, 1s adaptive)
+  doubt: started (PID 18779, object pool, 1s adaptive)
+  volition: started (PID 18883, object pool, 1s adaptive)
+  memory: started (PID 18977, object pool, 1s adaptive)
+  heartbeat: started (PID 19122, object pool, 1s adaptive)
+  archive: started (PID 19251, object pool, 1s adaptive)
+  memory_backup: started (PID 19391, object pool, 1s adaptive)
