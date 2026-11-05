@@ -178,6 +178,17 @@ class PadicMemory:
         v = self.valuation(diff)
         return self.p ** (-v)
 
+    def nearest_neighbors(self, query_addr: int, all_addresses: List[int], k: int = 5) -> List[Tuple[int, float]]:
+        """Find the k nearest neighbors using ultrametric distance."""
+        distances = []
+        for addr in all_addresses:
+            dist = self.ultrametric_distance(query_addr, addr)
+            distances.append((addr, dist))
+
+        # Sort by distance (ascending)
+        distances.sort(key=lambda x: x[1])
+        return distances[:k]
+
     def common_prefix_length(self, addr1: int, addr2: int) -> int:
         """Length of common prefix in base-p representation."""
         if addr1 == addr2:

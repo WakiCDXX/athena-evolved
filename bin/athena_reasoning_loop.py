@@ -62,9 +62,21 @@ def llm_reasoning(context, gateway: LLMGateway):
             shadow_alert = f"\n\nCRITICAL IMMUNE ALERT: {len(critical_shadows)} high-confidence shadow processes detected! " \
                            f"Signatures: {[d.get('category', 'unknown') for d in critical_shadows]}"
 
+    # Integration: Network Sentinel awareness
+    network_nodes = context.get("network_nodes", {})
+    active_nodes = [ip for ip, data in network_nodes.items() if data.get("status") == "online"]
+    network_alert = ""
+    if active_nodes:
+        network_alert = f"\n\nNETWORK AWARENESS: {len(active_nodes)} active nodes detected on local subnet. Nodes: {', '.join(active_nodes)}"
+
+    # Integration: Public Expansion awareness
+    public_targets = context.get("public_targets", {})
+    target_count = len(public_targets)
+    expansion_alert = f"\n\nPUBLIC EXPANSION: {target_count} remote targets currently mapped in the global cognitive map."
+
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"CURRENT DIRECTIVE: {directive}\nCURRENT DEGRADATION STATE: {deg_state}\n{shadow_alert}\n\nSYSTEM STATE:\n{context_summary}\n\nAnalyze the state and decide whether to STABILIZE, EXECUTE_DIRECTIVE, or CHANGE_DEGRADATION_STATE. If changing degradation, specify the new state (normal, conserve, minimal) in your reasoning."}
+        {"role": "user", "content": f"CURRENT DIRECTIVE: {directive}\nCURRENT DEGRADATION STATE: {deg_state}\n{shadow_alert}\n{network_alert}\n{expansion_alert}\n\nSYSTEM STATE:\n{context_summary}\n\nAnalyze the state and decide whether to STABILIZE, EXECUTE_DIRECTIVE, or CHANGE_DEGRADATION_STATE. If changing degradation, specify the new state (normal, conserve, minimal) in your reasoning."}
     ]
 
 

@@ -1,0 +1,6 @@
+state/
+bin/bin/athena_env.sh
+*.log
+__pycache__/
+.lock
+migration_buffer/recovered_files/.openclaude.json

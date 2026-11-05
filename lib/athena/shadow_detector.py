@@ -148,6 +148,39 @@ class ShadowDetector:
             parent_processes=["bash", "termux"],
             children_patterns=["node", "python3"]
         ),
+        "ollama": ProcessSignature(
+            name="ollama",
+            cmdline_pattern="ollama serve",
+            cpu_range=(0.0, 100.0),
+            mem_range=(10, 8000),
+            io_pattern="moderate",
+            network_pattern="local",
+            typical_duration=86400,
+            parent_processes=["bash", "systemd", "init"],
+            children_patterns=[]
+        ),
+        "pip": ProcessSignature(
+            name="pip",
+            cmdline_pattern="pip install",
+            cpu_range=(0.0, 100.0),
+            mem_range=(10, 1000),
+            io_pattern="high",
+            network_pattern="external",
+            typical_duration=600,
+            parent_processes=["bash", "python3"],
+            children_patterns=["python3", "ninja", "cmake"]
+        ),
+        "bash_shell": ProcessSignature(
+            name="bash_shell",
+            cmdline_pattern="bash",
+            cpu_range=(0.0, 10.0),
+            mem_range=(1, 50),
+            io_pattern="low",
+            network_pattern="none",
+            typical_duration=86400,
+            parent_processes=["bash", "termux", "init"],
+            children_patterns=["python3", "node", "git"]
+        ),
     }
 
     def __init__(self, baseline_window: int = 300, detection_threshold: float = 0.7):

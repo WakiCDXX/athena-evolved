@@ -81,7 +81,7 @@ class SatelliteBridge:
 
 bridge = SatelliteBridge()
 
- @app.route('/satellite', methods=['POST'])
+@app.route('/satellite', methods=['POST'])
 def satellite_endpoint():
     payload = request.json
     if not payload:
